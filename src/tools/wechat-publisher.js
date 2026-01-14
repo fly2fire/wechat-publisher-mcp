@@ -42,13 +42,14 @@ class WeChatPublisher {
 
       const {
         title,
-        content, 
+        content,
         author,
         appId,
         appSecret,
         coverImagePath,
         previewMode = false,
-        previewOpenId
+        previewOpenId,
+        draftOnly = true
       } = params;
 
       // 2. 初始化微信API
@@ -112,19 +113,21 @@ class WeChatPublisher {
         });
         
       } else {
-        logger.debug('开始正式发布文章');
+        logger.debug(draftOnly ? '创建草稿' : '开始正式发布文章');
         result = await wechatAPI.publishArticle({
           title,
-          content: htmlContent, 
+          content: htmlContent,
           author,
-          thumbMediaId
+          thumbMediaId,
+          draftOnly
         });
       }
 
       const executionTime = Date.now() - startTime;
-      logger.info(`文章${previewMode ? '预览' : '发布'}成功`, { 
-        ...result, 
-        executionTime: `${executionTime}ms` 
+      const mode = previewMode ? '预览' : (draftOnly ? '草稿创建' : '发布');
+      logger.info(`文章${mode}成功`, {
+        ...result,
+        executionTime: `${executionTime}ms`
       });
 
       // 6. 构建成功响应
@@ -133,6 +136,7 @@ class WeChatPublisher {
         author,
         result,
         previewMode,
+        draftOnly,
         executionTime,
         thumbMediaId
       });
@@ -165,38 +169,44 @@ class WeChatPublisher {
   /**
    * 构建成功响应消息
    */
-  static buildSuccessMessage({ title, author, result, previewMode, executionTime, thumbMediaId }) {
-    const mode = previewMode ? '预览' : '发布';
-    const icon = previewMode ? '👀' : '✅';
-    
+  static buildSuccessMessage({ title, author, result, previewMode, draftOnly, executionTime, thumbMediaId }) {
+    const mode = previewMode ? '预览' : (draftOnly ? '草稿创建' : '发布');
+    const icon = previewMode ? '👀' : (draftOnly ? '📝' : '✅');
+
     let message = `${icon} 文章${mode}成功！\n\n`;
     message += `📱 标题: ${title}\n`;
     message += `👤 作者: ${author}\n`;
-    
+
     if (result.articleUrl) {
       message += `🔗 链接: ${result.articleUrl}\n`;
     }
-    
+
+    if (result.mediaId) {
+      message += `📋 草稿MediaID: ${result.mediaId}\n`;
+    }
+
     if (result.publishId) {
       message += `📊 发布ID: ${result.publishId}\n`;
     }
-    
+
     if (result.msgId) {
       message += `📨 消息ID: ${result.msgId}\n`;
     }
-    
+
     if (thumbMediaId) {
       message += `🖼️ 封面图: 已上传\n`;
     }
-    
+
     message += `⏱️ 处理时间: ${executionTime}ms\n`;
-    
-    if (!previewMode) {
-      message += `\n🎉 您的文章已成功发布到微信公众号！读者可以在公众号中看到这篇文章。`;
-    } else {
+
+    if (previewMode) {
       message += `\n👀 预览已发送到指定用户，请检查微信查看效果。`;
+    } else if (draftOnly) {
+      message += `\n📝 草稿已创建成功！请登录微信公众号后台查看和发布。`;
+    } else {
+      message += `\n🎉 您的文章已成功发布到微信公众号！读者可以在公众号中看到这篇文章。`;
     }
-    
+
     return message;
   }
 

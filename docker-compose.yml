@@ -1,0 +1,10 @@
+services:
+  wechat-publisher:
+    build: .
+    container_name: wechat-publisher-mcp
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - MCP_TRANSPORT=http
+    restart: unless-stopped

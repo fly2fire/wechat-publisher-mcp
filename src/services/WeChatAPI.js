@@ -143,7 +143,7 @@ class WeChatAPI {
    * @param {Object} options 发布选项
    * @returns {Promise<Object>} 发布结果
    */
-  async publishArticle({ title, content, author, thumbMediaId }) {
+  async publishArticle({ title, content, author, thumbMediaId, draftOnly = true }) {
     // 检查是否为测试环境（通过AppID判断）
     if (this.appId.startsWith('test_')) {
       logger.info('测试模式：模拟文章发布成功');
@@ -217,6 +217,18 @@ class WeChatAPI {
       const mediaId = draftResponse.data.media_id;
       logger.info('草稿创建成功', { mediaId });
       console.log('✅ 草稿创建成功，MediaID:', mediaId);
+
+      // 如果只创建草稿，直接返回
+      if (draftOnly) {
+        logger.info('仅创建草稿模式，跳过发布步骤');
+        console.log('📝 草稿已创建，请在微信公众平台后台手动发布');
+        return {
+          success: true,
+          mediaId,
+          draftOnly: true,
+          message: '草稿创建成功，请在微信公众平台后台手动发布'
+        };
+      }
 
       // 2. 发布草稿
       logger.debug('开始发布草稿');
