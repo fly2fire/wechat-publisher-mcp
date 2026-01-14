@@ -7,4 +7,14 @@ services:
     environment:
       - PORT=3003
       - MCP_TRANSPORT=http
+      - MCP_DATA_PATH=/app/data
+      # OAuth 配置 - 取消注释启用
+      # - MCP_OAUTH=true
+      # - MCP_BASE_URL=https://your-domain.com
+      # - MCP_OAUTH_STRICT=true
+    volumes:
+      - wechat-publisher-data:/app/data
     restart: unless-stopped
+
+volumes:
+  wechat-publisher-data:

@@ -10,9 +10,13 @@ import { dirname } from 'path';
 import { z } from 'zod';
 import WeChatPublisher from './tools/wechat-publisher.js';
 import WeChatStatus from './tools/wechat-status.js';
+import { setupOAuth } from './auth/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// 检查是否启用 OAuth
+const useOAuth = process.env.MCP_OAUTH === 'true' || process.env.MCP_OAUTH === '1';
 
 // 日志输出到 stderr，避免干扰 stdio 协议
 const logger = {
@@ -118,24 +122,55 @@ function createMcpServer() {
 // HTTP 模式启动 (使用 StreamableHTTPServerTransport)
 async function startHttpServer(port) {
   const app = express();
-  app.use(express.json());
 
   // 存储活跃的 sessions
   const transports = {};
+
+  // OAuth 配置
+  let authMiddleware = null;
+  const baseUrl = process.env.MCP_BASE_URL || `http://localhost:${port}`;
+  const mcpServerUrl = new URL(`${baseUrl}/mcp`);
+
+  if (useOAuth) {
+    logger.info('OAuth authentication enabled');
+
+    const oauth = setupOAuth({
+      mcpServerUrl,
+      storagePath: process.env.MCP_DATA_PATH || './data',
+      strictResource: process.env.MCP_OAUTH_STRICT === 'true'
+    });
+
+    // 设置 OAuth 路由
+    oauth.setupRoutes(app);
+    authMiddleware = oauth.authMiddleware;
+
+    logger.info('OAuth endpoints configured', {
+      authorize: `${baseUrl}/authorize`,
+      token: `${baseUrl}/token`,
+      introspect: `${baseUrl}/oauth/introspect`
+    });
+  } else {
+    app.use(express.json());
+  }
 
   // 健康检查
   app.get('/health', (req, res) => {
     res.json({
       status: 'ok',
       server: 'wechat-publisher-mcp',
-      sessions: Object.keys(transports).length
+      sessions: Object.keys(transports).length,
+      oauth: useOAuth
     });
   });
 
-  // MCP 端点 - POST 请求
-  app.post('/mcp', async (req, res) => {
+  // MCP POST 处理函数
+  const mcpPostHandler = async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
     let transport;
+
+    if (useOAuth && req.auth) {
+      logger.debug('Authenticated request', { clientId: req.auth.clientId });
+    }
 
     if (sessionId && transports[sessionId]) {
       // 复用已有 session
@@ -178,10 +213,10 @@ async function startHttpServer(port) {
     }
 
     await transport.handleRequest(req, res, req.body);
-  });
+  };
 
-  // MCP 端点 - GET 请求 (SSE streaming)
-  app.get('/mcp', async (req, res) => {
+  // MCP GET 处理函数 (SSE streaming)
+  const mcpGetHandler = async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
     const transport = transports[sessionId];
 
@@ -190,10 +225,10 @@ async function startHttpServer(port) {
     } else {
       res.status(400).json({ error: 'Invalid session' });
     }
-  });
+  };
 
-  // MCP 端点 - DELETE 请求 (关闭 session)
-  app.delete('/mcp', async (req, res) => {
+  // MCP DELETE 处理函数 (关闭 session)
+  const mcpDeleteHandler = async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
     const transport = transports[sessionId];
 
@@ -202,12 +237,29 @@ async function startHttpServer(port) {
     } else {
       res.status(400).json({ error: 'Invalid session' });
     }
-  });
+  };
+
+  // 根据是否启用 OAuth 设置路由
+  if (useOAuth && authMiddleware) {
+    app.post('/mcp', authMiddleware, mcpPostHandler);
+    app.get('/mcp', authMiddleware, mcpGetHandler);
+    app.delete('/mcp', authMiddleware, mcpDeleteHandler);
+  } else {
+    app.post('/mcp', mcpPostHandler);
+    app.get('/mcp', mcpGetHandler);
+    app.delete('/mcp', mcpDeleteHandler);
+  }
 
   app.listen(port, () => {
     logger.info(`HTTP server listening on port ${port}`);
-    logger.info(`MCP endpoint: http://localhost:${port}/mcp`);
-    logger.info(`Health check: http://localhost:${port}/health`);
+    logger.info(`MCP endpoint: ${mcpServerUrl.toString()}`);
+    logger.info(`Health check: ${baseUrl}/health`);
+    if (useOAuth) {
+      logger.info('OAuth authentication: ENABLED');
+      logger.info(`OAuth discovery: ${baseUrl}/.well-known/oauth-authorization-server`);
+    } else {
+      logger.info('OAuth authentication: DISABLED (set MCP_OAUTH=true to enable)');
+    }
   });
 }
 

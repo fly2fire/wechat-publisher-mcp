@@ -1,0 +1,31 @@
+# 生产环境 OAuth 配置
+# 使用: docker compose -f docker-compose.oauth.yml up -d
+
+services:
+  wechat-publisher:
+    build: .
+    container_name: wechat-publisher-mcp
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+      - MCP_TRANSPORT=http
+      - MCP_DATA_PATH=/app/data
+      # OAuth 启用
+      - MCP_OAUTH=true
+      # 生产环境必须设置正确的 BASE_URL
+      - MCP_BASE_URL=${MCP_BASE_URL:-http://localhost:3003}
+      # 严格资源验证（推荐生产环境启用）
+      - MCP_OAUTH_STRICT=${MCP_OAUTH_STRICT:-true}
+    volumes:
+      - wechat-publisher-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  wechat-publisher-data:
