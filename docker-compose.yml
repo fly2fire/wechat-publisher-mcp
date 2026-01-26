@@ -14,6 +14,7 @@ services:
       # - MCP_OAUTH_STRICT=true
     volumes:
       - wechat-publisher-data:/app/data
+      - /Users/caijie/Project/bitbeat/mp-wechat:/Users/caijie/Project/bitbeat/mp-wechat:ro
     restart: unless-stopped
 
 volumes:

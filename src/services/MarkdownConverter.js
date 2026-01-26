@@ -31,19 +31,22 @@ class MarkdownConverter {
     // 5. 处理引用
     html = this.convertBlockquotes(html);
 
-    // 6. 处理链接
+    // 6. 处理图片（必须在链接之前，避免图片语法被链接规则误处理）
+    html = this.convertImages(html);
+
+    // 7. 处理链接
     html = this.convertLinks(html);
 
-    // 7. 处理表格
+    // 9. 处理表格
     html = this.convertTables(html);
 
-    // 8. 处理段落
+    // 10. 处理段落
     html = this.convertParagraphs(html);
 
-    // 9. 清理和优化
+    // 11. 清理和优化
     html = this.cleanupHTML(html);
 
-    // 10. 添加基础样式
+    // 12. 添加基础样式
     return this.addBaseStyles(html);
   }
 
@@ -121,6 +124,15 @@ class MarkdownConverter {
    */
   static convertBlockquotes(html) {
     html = html.replace(/^>\s*(.+)$/gm, '<blockquote style="border-left: 4px solid #3498db; padding: 16px 20px; margin: 16px 0; background: #f8fafb; font-style: italic; color: #555; border-radius: 0 8px 8px 0;">$1</blockquote>');
+    return html;
+  }
+
+  /**
+   * 处理图片
+   */
+  static convertImages(html) {
+    // 将 Markdown 图片语法转换为 HTML img 标签
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto; display: block; margin: 16px auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" />');
     return html;
   }
 

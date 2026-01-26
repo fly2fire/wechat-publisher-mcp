@@ -49,20 +49,83 @@ class WeChatPublisher {
         coverImagePath,
         previewMode = false,
         previewOpenId,
-        draftOnly = true
+        draftOnly = true,
+        contentType = 'markdown'  // 'markdown' 或 'html'
       } = params;
 
       // 2. 初始化微信API
       logger.debug('初始化微信API');
       const wechatAPI = new WeChatAPI(appId, appSecret);
 
-      // 3. 转换Markdown为微信HTML
-      logger.debug('转换Markdown内容');
-      const htmlContent = MarkdownConverter.convertToWeChatHTML(content);
-      logger.debug('Markdown转换完成', { 
-        originalLength: content.length, 
-        htmlLength: htmlContent.length 
-      });
+      // 3. 处理文章内嵌图片（仅 Markdown 格式需要）
+      let processedContent = content;
+
+      if (contentType === 'markdown') {
+        const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        const imageMatches = [...content.matchAll(imageRegex)];
+
+        if (imageMatches.length > 0) {
+          logger.info(`发现 ${imageMatches.length} 张内嵌图片，开始上传...`);
+
+        // 确定基础路径（从 coverImagePath 推断文章目录，或使用当前目录）
+        let basePath = process.cwd();
+        if (coverImagePath) {
+          const path = await import('path');
+          // 如果 coverImagePath 在 images 子目录下，往上两级到文章目录
+          const coverDir = path.default.dirname(coverImagePath);
+          if (coverDir.endsWith('/images') || coverDir.endsWith('\\images')) {
+            basePath = path.default.dirname(coverDir);
+          } else {
+            basePath = coverDir;
+          }
+        }
+
+        for (const match of imageMatches) {
+          const [fullMatch, altText, imagePath] = match;
+
+          try {
+            // 解析图片路径
+            const path = await import('path');
+            let absolutePath = imagePath;
+
+            // 如果是相对路径，转换为绝对路径
+            if (!path.default.isAbsolute(imagePath)) {
+              absolutePath = path.default.resolve(basePath, imagePath);
+            }
+
+            logger.debug(`上传图片: ${absolutePath}`);
+            const imageUrl = await wechatAPI.uploadContentImage(absolutePath);
+
+            // 替换 Markdown 中的图片路径为微信 URL
+            processedContent = processedContent.replace(
+              fullMatch,
+              `![${altText}](${imageUrl})`
+            );
+
+            logger.info(`图片上传成功: ${path.default.basename(absolutePath)} -> ${imageUrl}`);
+          } catch (error) {
+            logger.warn(`图片上传失败: ${imagePath}`, { error: error.message });
+            // 继续处理其他图片，不中断流程
+          }
+        }
+        }
+      }
+
+      // 4. 转换为微信HTML（根据 contentType 决定是否转换）
+      let htmlContent;
+      if (contentType === 'html') {
+        // 已经是 HTML，直接使用
+        logger.debug('内容已是HTML格式，跳过Markdown转换');
+        htmlContent = processedContent;
+      } else {
+        // Markdown 格式，需要转换
+        logger.debug('转换Markdown内容');
+        htmlContent = MarkdownConverter.convertToWeChatHTML(processedContent);
+        logger.debug('Markdown转换完成', {
+          originalLength: content.length,
+          htmlLength: htmlContent.length
+        });
+      }
 
       // 4. 处理封面图 - 如果没有提供封面图，则自动生成
       let thumbMediaId = null;

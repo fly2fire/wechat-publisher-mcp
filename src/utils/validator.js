@@ -44,7 +44,11 @@ function validatePublishParams(params) {
   if (params.previewOpenId && typeof params.previewOpenId !== 'string') {
     errors.push('previewOpenId参数必须是字符串类型');
   }
-  
+
+  if (params.contentType && !['markdown', 'html'].includes(params.contentType)) {
+    errors.push('contentType参数必须是 "markdown" 或 "html"');
+  }
+
   // 业务规则验证
   if (params.title && params.title.length > 64) {
     errors.push('标题长度不能超过64个字符');

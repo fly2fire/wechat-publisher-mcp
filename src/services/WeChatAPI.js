@@ -109,7 +109,7 @@ class WeChatAPI {
       });
 
       const response = await axios.post(
-        `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${accessToken}&type=thumb`,
+        `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${accessToken}&type=image`,
         formData,
         { 
           headers: formData.getHeaders(),
@@ -134,6 +134,78 @@ class WeChatAPI {
         throw new Error(`封面图上传失败: ${errorData.errmsg || error.message}`);
       } else {
         throw new Error(`封面图上传请求失败: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * 上传文章内容中的图片（返回URL而非media_id）
+   * @param {string} imagePath 图片文件路径
+   * @returns {Promise<string>} 图片URL
+   */
+  async uploadContentImage(imagePath) {
+    const accessToken = await this.getAccessToken();
+
+    try {
+      // 检查文件是否存在
+      const stats = await fs.stat(imagePath);
+      if (!stats.isFile()) {
+        throw new Error('指定路径不是有效文件');
+      }
+
+      // 检查文件大小（微信限制10MB）
+      if (stats.size > 10 * 1024 * 1024) {
+        throw new Error('图片文件过大，请使用小于10MB的图片');
+      }
+
+      // 读取图片文件
+      const imageBuffer = await fs.readFile(imagePath);
+      const formData = new FormData();
+
+      // 根据文件扩展名确定Content-Type
+      const ext = path.extname(imagePath).toLowerCase();
+      let contentType = 'image/jpeg';
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.gif') contentType = 'image/gif';
+      else if (ext === '.webp') contentType = 'image/webp';
+
+      formData.append('media', imageBuffer, {
+        filename: path.basename(imagePath),
+        contentType: contentType
+      });
+
+      logger.debug('开始上传内容图片', {
+        path: imagePath,
+        size: stats.size,
+        contentType
+      });
+
+      // 使用 uploadimg 接口，返回 URL
+      const response = await axios.post(
+        `https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token=${accessToken}`,
+        formData,
+        {
+          headers: formData.getHeaders(),
+          timeout: 60000
+        }
+      );
+
+      if (response.data.url) {
+        logger.info('内容图片上传成功', {
+          url: response.data.url
+        });
+        return response.data.url;
+      } else {
+        throw new Error(`内容图片上传失败: ${response.data.errmsg || '未知错误'}`);
+      }
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        throw new Error(`图片文件不存在: ${imagePath}`);
+      } else if (error.response) {
+        const errorData = error.response.data;
+        throw new Error(`内容图片上传失败: ${errorData.errmsg || error.message}`);
+      } else {
+        throw new Error(`内容图片上传请求失败: ${error.message}`);
       }
     }
   }
