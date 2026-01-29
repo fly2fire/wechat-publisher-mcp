@@ -39,18 +39,19 @@ function createMcpServer() {
       description: "将文章发布到微信公众号，支持Markdown格式",
       inputSchema: {
         title: z.string().describe("文章标题"),
-        content: z.string().describe("Markdown格式的文章内容"),
+        content: z.string().describe("文章内容，支持Markdown或HTML格式"),
         author: z.string().describe("作者名称"),
         appId: z.string().describe("微信公众号AppID"),
         appSecret: z.string().describe("微信公众号AppSecret"),
         coverImagePath: z.string().optional().describe("封面图片路径"),
+        contentType: z.enum(['markdown', 'html']).default('markdown').describe("内容格式：markdown 或 html"),
         previewMode: z.boolean().default(false).describe("是否为预览模式"),
         previewOpenId: z.string().optional().describe("预览用户OpenID"),
         draftOnly: z.boolean().default(true).describe("是否仅创建草稿不发布，默认true")
       }
     },
     async (params) => {
-      const { title, content, author, appId, appSecret, coverImagePath, previewMode, previewOpenId, draftOnly = true } = params;
+      const { title, content, author, appId, appSecret, coverImagePath, contentType = 'markdown', previewMode, previewOpenId, draftOnly = true } = params;
       logger.info(`Publishing article: ${title}`);
 
       try {
@@ -61,6 +62,7 @@ function createMcpServer() {
           appId,
           appSecret,
           coverImagePath,
+          contentType,
           previewMode,
           previewOpenId,
           draftOnly
