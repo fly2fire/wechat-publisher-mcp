@@ -57,38 +57,35 @@ class WeChatPublisher {
       logger.debug('初始化微信API');
       const wechatAPI = new WeChatAPI(appId, appSecret);
 
-      // 3. 处理文章内嵌图片（仅 Markdown 格式需要）
+      // 3. 处理文章内嵌图片
       let processedContent = content;
+
+      // 确定基础路径（从 coverImagePath 推断文章目录，或使用当前目录）
+      let basePath = process.cwd();
+      if (coverImagePath) {
+        const path = await import('path');
+        const coverDir = path.default.dirname(coverImagePath);
+        if (coverDir.endsWith('/images') || coverDir.endsWith('\\images')) {
+          basePath = path.default.dirname(coverDir);
+        } else {
+          basePath = coverDir;
+        }
+      }
 
       if (contentType === 'markdown') {
         const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
         const imageMatches = [...content.matchAll(imageRegex)];
 
         if (imageMatches.length > 0) {
-          logger.info(`发现 ${imageMatches.length} 张内嵌图片，开始上传...`);
-
-        // 确定基础路径（从 coverImagePath 推断文章目录，或使用当前目录）
-        let basePath = process.cwd();
-        if (coverImagePath) {
-          const path = await import('path');
-          // 如果 coverImagePath 在 images 子目录下，往上两级到文章目录
-          const coverDir = path.default.dirname(coverImagePath);
-          if (coverDir.endsWith('/images') || coverDir.endsWith('\\images')) {
-            basePath = path.default.dirname(coverDir);
-          } else {
-            basePath = coverDir;
-          }
-        }
+          logger.info(`发现 ${imageMatches.length} 张内嵌图片（Markdown），开始上传...`);
 
         for (const match of imageMatches) {
           const [fullMatch, altText, imagePath] = match;
 
           try {
-            // 解析图片路径
             const path = await import('path');
             let absolutePath = imagePath;
 
-            // 如果是相对路径，转换为绝对路径
             if (!path.default.isAbsolute(imagePath)) {
               absolutePath = path.default.resolve(basePath, imagePath);
             }
@@ -96,7 +93,6 @@ class WeChatPublisher {
             logger.debug(`上传图片: ${absolutePath}`);
             const imageUrl = await wechatAPI.uploadContentImage(absolutePath);
 
-            // 替换 Markdown 中的图片路径为微信 URL
             processedContent = processedContent.replace(
               fullMatch,
               `![${altText}](${imageUrl})`
@@ -105,9 +101,44 @@ class WeChatPublisher {
             logger.info(`图片上传成功: ${path.default.basename(absolutePath)} -> ${imageUrl}`);
           } catch (error) {
             logger.warn(`图片上传失败: ${imagePath}`, { error: error.message });
-            // 继续处理其他图片，不中断流程
           }
         }
+        }
+      } else if (contentType === 'html') {
+        // HTML 模式：检测 <img src="..."> 中的本地图片路径并上传
+        const imgRegex = /<img\s[^>]*src=["']([^"']+)["'][^>]*>/gi;
+        const imgMatches = [...content.matchAll(imgRegex)];
+        const localImages = imgMatches.filter(m => {
+          const src = m[1];
+          return !src.startsWith('http://') && !src.startsWith('https://') && !src.startsWith('data:');
+        });
+
+        if (localImages.length > 0) {
+          logger.info(`发现 ${localImages.length} 张本地图片（HTML），开始上传...`);
+
+          for (const match of localImages) {
+            const [fullImgTag, imagePath] = match;
+
+            try {
+              const path = await import('path');
+              let absolutePath = imagePath;
+
+              if (!path.default.isAbsolute(imagePath)) {
+                absolutePath = path.default.resolve(basePath, imagePath);
+              }
+
+              logger.debug(`上传图片: ${absolutePath}`);
+              const imageUrl = await wechatAPI.uploadContentImage(absolutePath);
+
+              // 替换 img 标签中的 src 属性
+              const newImgTag = fullImgTag.replace(imagePath, imageUrl);
+              processedContent = processedContent.replace(fullImgTag, newImgTag);
+
+              logger.info(`图片上传成功: ${path.default.basename(absolutePath)} -> ${imageUrl}`);
+            } catch (error) {
+              logger.warn(`图片上传失败: ${imagePath}`, { error: error.message });
+            }
+          }
         }
       }
 
